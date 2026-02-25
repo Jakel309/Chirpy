@@ -18,9 +18,14 @@ func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
 }
 
 func (cfg *apiConfig) getHits(w http.ResponseWriter, req *http.Request) {
-	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Add("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(200)
-	w.Write([]byte(fmt.Sprintf("Hits: %d", cfg.fileserverHits.Load())))
+	w.Write([]byte(fmt.Sprintf(`<html>
+  <body>
+    <h1>Welcome, Chirpy Admin</h1>
+    <p>Chirpy has been visited %d times!</p>
+  </body>
+</html>`, cfg.fileserverHits.Load())))
 }
 
 func (cfg *apiConfig) resetHits(w http.ResponseWriter, req *http.Request) {
@@ -29,17 +34,20 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(200)
 }
 
+
+
 func main() {
 	apiCfg := &apiConfig{}
 	mux := http.NewServeMux()
-	mux.Handle("/app", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, req *http.Request) {
+	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
+	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, req *http.Request) {
 		w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(200)
 		w.Write([]byte("OK"))
 	})
-	mux.HandleFunc("GET /metrics", apiCfg.getHits)
-	mux.HandleFunc("POST /reset", apiCfg.resetHits)
+	mux.HandleFunc("GET /admin/metrics", apiCfg.getHits)
+	mux.HandleFunc("POST /admin/reset", apiCfg.resetHits)
+	mux.HandleFunc("POST /api/validate_chirp", handleChirp)
 	var server http.Server
 	server.Addr = ":8080"
 	server.Handler = mux
