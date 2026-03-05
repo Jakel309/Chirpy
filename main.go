@@ -15,6 +15,7 @@ import (
 type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
+	secret 			string
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -39,6 +40,7 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, req *http.Request) {
 	cfg.fileserverHits.Store(0)
 	cfg.database.DeleteUsers(req.Context())
 	cfg.database.DeleteChirps(req.Context())
+	cfg.database.DeleteRefreshTokens(req.Context())
 	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(200)
 }
@@ -55,8 +57,11 @@ func main() {
 	}
 	dbQueries := database.New(db)
 
+	secret := os.Getenv("SECRET")
+
 	apiCfg := &apiConfig{}
 	apiCfg.database = dbQueries
+	apiCfg.secret = secret
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
@@ -71,6 +76,10 @@ func main() {
 	mux.HandleFunc("POST /admin/reset", apiCfg.resetHits)
 	mux.HandleFunc("POST /api/chirps", apiCfg.handleChirp)
 	mux.HandleFunc("POST /api/users", apiCfg.handleCreateUser)
+	mux.HandleFunc("POST /api/login", apiCfg.handleUserLogin)
+	mux.HandleFunc("POST /api/refresh", apiCfg.handleRefreshToken)
+	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
+	mux.HandleFunc("PUT /api/users", apiCfg.handleUserUpdate)
 	var server http.Server
 	server.Addr = ":8080"
 	server.Handler = mux

@@ -1,8 +1,10 @@
 package main
 
 import (
+	"Chirpy/internal"
 	"Chirpy/internal/database"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -20,9 +22,9 @@ type chirpJson struct {
 }
 
 func (cfg *apiConfig) handleChirp(w http.ResponseWriter, req *http.Request) {
+
 	type chirp struct {
 		Body string `json:"body"`
-		UserId uuid.UUID `json:"user_id"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -30,6 +32,22 @@ func (cfg *apiConfig) handleChirp(w http.ResponseWriter, req *http.Request) {
 	err := decoder.Decode(&chirpInfo)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	token, err := internal.GetBearerToken(req.Header)
+
+	if err != nil {
+		fmt.Println(err)
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	userId, err := internal.ValidateJWT(token, cfg.secret)
+
+	if err != nil{
+		fmt.Println(err)
+		respondWithError(w, 401, "Unauthorized")
 		return
 	}
 
@@ -58,7 +76,7 @@ func (cfg *apiConfig) handleChirp(w http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	createdChirp, err := cfg.database.CreateChirp(req.Context(), database.CreateChirpParams{Body: final, UserID: chirpInfo.UserId})
+	createdChirp, err := cfg.database.CreateChirp(req.Context(), database.CreateChirpParams{Body: final, UserID: userId})
 
 	if err != nil {
 		respondWithError(w, 400, err.Error())
