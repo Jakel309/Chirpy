@@ -16,6 +16,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	database       *database.Queries
 	secret 			string
+	polkaKey		string
 }
 
 func (cfg *apiConfig) middlewareMetricInc(next http.Handler) http.Handler {
@@ -46,6 +47,7 @@ func (cfg *apiConfig) resetHits(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	fmt.Println("Starting server")
 	godotenv.Load()
 
 	// Establish database connection
@@ -58,10 +60,12 @@ func main() {
 	dbQueries := database.New(db)
 
 	secret := os.Getenv("SECRET")
+	polkaKey := os.Getenv("POLKA_KEY")
 
 	apiCfg := &apiConfig{}
 	apiCfg.database = dbQueries
 	apiCfg.secret = secret
+	apiCfg.polkaKey = polkaKey
 
 	mux := http.NewServeMux()
 	mux.Handle("/app/", apiCfg.middlewareMetricInc(http.StripPrefix("/app", http.FileServer(http.Dir(".")))))
@@ -80,8 +84,14 @@ func main() {
 	mux.HandleFunc("POST /api/refresh", apiCfg.handleRefreshToken)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handleRevokeToken)
 	mux.HandleFunc("PUT /api/users", apiCfg.handleUserUpdate)
+	mux.HandleFunc("DELETE /api/chirps/{chirpID}", apiCfg.handleDeleteChirp)
+	mux.HandleFunc("POST /api/polka/webhooks", apiCfg.handleUpgradeUser)
 	var server http.Server
 	server.Addr = ":8080"
 	server.Handler = mux
-	server.ListenAndServe()
+	fmt.Println("Server running")
+	err = server.ListenAndServe()
+	if err != nil {
+		fmt.Println("Server error: %v\n", err)
+	}
 }

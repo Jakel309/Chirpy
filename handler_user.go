@@ -22,6 +22,7 @@ func (cfg *apiConfig) handleCreateUser(w http.ResponseWriter, req *http.Request)
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -50,6 +51,7 @@ func (cfg *apiConfig) handleCreateUser(w http.ResponseWriter, req *http.Request)
 		CreatedAt: createdUser.CreatedAt,
 		UpdatedAt: createdUser.UpdatedAt,
 		Email: createdUser.Email,
+		IsChirpyRed: createdUser.IsChirpyRed,
 	})
 }
 
@@ -66,6 +68,7 @@ func (cfg *apiConfig) handleUserLogin(w http.ResponseWriter, req *http.Request) 
 		Email string `json:"email"`
 		Token string `json:"token"`
 		RefreshToken string `json:"refresh_token"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -124,6 +127,7 @@ func (cfg *apiConfig) handleUserLogin(w http.ResponseWriter, req *http.Request) 
 		Email: foundUser.Email,
 		Token: token,
 		RefreshToken: refreshToken,
+		IsChirpyRed: foundUser.IsChirpyRed,
 	})
 }
 
@@ -138,6 +142,7 @@ func (cfg *apiConfig) handleUserUpdate(w http.ResponseWriter, req *http.Request)
 		CreatedAt time.Time `json:"created_at"`
 		UpdatedAt time.Time `json:"updated_at"`
 		Email string `json:"email"`
+		IsChirpyRed bool `json:"is_chirpy_red"`
 	}
 
 	decoder := json.NewDecoder(req.Body)
@@ -185,6 +190,7 @@ func (cfg *apiConfig) handleUserUpdate(w http.ResponseWriter, req *http.Request)
 		CreatedAt: updatedUser.CreatedAt,
 		UpdatedAt: updatedUser.UpdatedAt,
 		Email: updatedUser.Email,
+		IsChirpyRed: updatedUser.IsChirpyRed,
 	})
 }
 
@@ -249,4 +255,59 @@ func (cfg *apiConfig) handleRevokeToken(w http.ResponseWriter, req *http.Request
 	}
 
 	w.WriteHeader(204)
+}
+
+func (cfg *apiConfig) handleUpgradeUser(w http.ResponseWriter, req *http.Request) {
+	apiKey, err := internal.GetAPIKey(req.Header)
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	if apiKey != cfg.polkaKey {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	type data struct {
+		UserId string `json:"user_id"`
+	}
+	type receivedBody struct {
+		Event string `json:"event"`
+		Data data `json:"data"`
+	}
+
+	decoder := json.NewDecoder(req.Body)
+	info := receivedBody{}
+	err = decoder.Decode(&info)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if info.Event != "user.upgraded" {
+		w.WriteHeader(204)
+		return
+	}
+
+	id, err := uuid.Parse(info.Data.UserId)
+	
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	_, err = cfg.database.UpgradeUser(req.Context(), id)
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			respondWithError(w, 404, "User not found")
+			return
+		} else {
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	w.WriteHeader(204)
+
 }

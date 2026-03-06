@@ -19,3 +19,8 @@ WHERE id = $1;
 -- name: DeleteChirps :one
 DELETE FROM chirps
 RETURNING *;
+
+-- name: DeleteChirp :one
+DELETE FROM chirps
+where id = $1
+RETURNING *;

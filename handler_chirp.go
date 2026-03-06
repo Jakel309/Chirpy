@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -93,6 +94,9 @@ func (cfg *apiConfig) handleChirp(w http.ResponseWriter, req *http.Request) {
 }
 
 func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) {
+	authorId := req.URL.Query().Get("author_id")
+	sortOrder := req.URL.Query().Get("sort")
+
 	chirps, err := cfg.database.GetChirps(req.Context())
 
 	if err != nil {
@@ -100,9 +104,14 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	 chirpsToReturn := []chirpJson{}
+	chirpsToReturn := []chirpJson{}
 
-	 for _, chirp := range(chirps) {
+	for _, chirp := range(chirps) {
+		if authorId != "" {
+			if chirp.UserID.String() != authorId {
+				continue
+			}
+		}
 		chirpsToReturn = append(chirpsToReturn, chirpJson{
 			Id: chirp.ID,
 			CreatedAt: chirp.CreatedAt,
@@ -110,8 +119,13 @@ func (cfg *apiConfig) handleGetChirps(w http.ResponseWriter, req *http.Request) 
 			Body: chirp.Body,
 			UserId: chirp.UserID,
 		})
-	 }
+	}
 
+	if sortOrder == "desc" {
+		sort.Slice(chirpsToReturn, func(i, j int) bool {return chirpsToReturn[i].CreatedAt.After(chirpsToReturn[j].CreatedAt)})
+	} else {
+		sort.Slice(chirpsToReturn, func(i, j int) bool {return chirpsToReturn[i].CreatedAt.Before(chirpsToReturn[j].CreatedAt)})
+	}
 
 	respondWithJson(w, 200, chirpsToReturn)
 }
@@ -138,4 +152,53 @@ func (cfg *apiConfig) handleGetChirp(w http.ResponseWriter, req *http.Request) {
 		Body: chirp.Body,
 		UserId: chirp.UserID,
 	})
+}
+
+func (cfg *apiConfig) handleDeleteChirp(w http.ResponseWriter, req *http.Request) {
+	id, err := uuid.Parse(req.PathValue("chirpID"))
+
+	if err != nil {
+		respondWithError(w, 404, err.Error())
+		return
+	}
+
+	token, err := internal.GetBearerToken(req.Header)
+
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	userId, err := internal.ValidateJWT(token, cfg.secret)
+
+	if err != nil {
+		respondWithError(w, 401, "Unauthorized")
+		return
+	}
+
+	chirp, err := cfg.database.GetChirp(req.Context(), id)
+
+	if err != nil {
+		if err.Error() == "sql: no rows in result set" {
+			respondWithError(w, 404, "Chirp not found")
+			return
+		} else {
+			respondWithError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if chirp.UserID != userId {
+		respondWithError(w, 403, "Unauthorized")
+		return
+	}
+
+	_, err = cfg.database.DeleteChirp(req.Context(), id)
+
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	w.WriteHeader(204)
 }

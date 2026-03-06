@@ -91,3 +91,14 @@ func MakeRefreshToken() string {
 	converted := hex.EncodeToString(key)
 	return converted
 }
+
+func GetAPIKey(headers http.Header) (string, error) {
+	key := headers.Get("Authorization")
+	if key == "" {
+		return "", errors.New("No api key")
+	}
+
+	strippedString := strings.ReplaceAll(key, "ApiKey ", "")
+
+	return strippedString, nil
+}
